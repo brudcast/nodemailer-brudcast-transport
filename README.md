@@ -21,7 +21,7 @@ app to Brudcast is a one-line change.
   `info` shape as Nodemailer's built-in transports
 - **Typed**: written in TypeScript, ships its own declarations
 - **Dual package**: ESM `import` and CommonJS `require` both work
-- **Broad support**: Node.js 18+ and Nodemailer 6 through 10
+- **Broad support**: Node.js 20+ and Nodemailer 6 through 10
 - **No HTTP dependencies**: uses the platform `fetch`
 
 ## Contents
@@ -443,7 +443,7 @@ const { jobId } = info as BrudcastSentMessageInfo;
 
 | Dependency | Supported      |
 | ---------- | -------------- |
-| Node.js    | 18, 20, 22, 24 |
+| Node.js    | 20, 22, 24     |
 | Nodemailer | 6, 7, 8, 9, 10 |
 
 CI runs the suite on every listed Node.js version and against every listed
