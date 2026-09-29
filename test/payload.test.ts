@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildPayload, renderHtml, toAttachments } from "../src/payload";
+import { buildPayload, renderHtml, toAttachments, toHeaders } from "../src/payload";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -43,6 +43,21 @@ describe("buildPayload", () => {
   });
 });
 
+describe("toHeaders", () => {
+  it("skips headers without a name or a value", () => {
+    expect(
+      toHeaders({
+        headers: [
+          { key: "", value: "x" },
+          { value: "no name" },
+          null,
+          { key: "X-Empty", value: "" }
+        ]
+      })
+    ).toBeUndefined();
+  });
+});
+
 describe("toAttachments", () => {
   it("returns undefined when there is nothing to attach", () => {
     expect(toAttachments()).toBeUndefined();
@@ -57,7 +72,8 @@ describe("toAttachments", () => {
         filename: "logo@brudcast",
         content: "eA==",
         encoding: "base64",
-        contentType: "application/octet-stream"
+        contentType: "application/octet-stream",
+        cid: "logo@brudcast"
       },
       {
         filename: "attachment-2",
@@ -66,6 +82,12 @@ describe("toAttachments", () => {
         contentType: "application/octet-stream"
       }
     ]);
+  });
+
+  it("sends a cid without angle brackets", () => {
+    expect(
+      toAttachments([{ filename: "logo.png", cid: "<logo@brudcast>", content: "x" }])?.[0]?.cid
+    ).toBe("logo@brudcast");
   });
 
   it("re-encodes strings in other encodings", () => {
