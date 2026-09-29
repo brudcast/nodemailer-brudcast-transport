@@ -1,9 +1,12 @@
 import { name as packageName, version as packageVersion } from "../package.json";
 import { BrudcastError } from "./errors";
 import { buildPayload } from "./payload";
+import { brudcastSmtp } from "./smtp";
 import type {
   BrudcastResponse,
   BrudcastSentMessageInfo,
+  BrudcastSmtpOptions,
+  BrudcastSmtpTransportOptions,
   BrudcastTransportOptions,
   NormalizableMail,
   NormalizedMail
@@ -37,6 +40,13 @@ type SendResult = BrudcastResponse<{ jobId: string }>;
 
 const resolveApiKey = (options: BrudcastTransportOptions): string | undefined =>
   options.auth?.apiKey || options.auth?.api_key || options.apiKey;
+
+const isSmtpOptions = (
+  options: BrudcastTransportOptions | BrudcastSmtpOptions
+): options is BrudcastSmtpOptions => {
+  const auth = options.auth as { user?: unknown; pass?: unknown } | undefined;
+  return auth?.user !== undefined || auth?.pass !== undefined;
+};
 
 const normalize = (mail: NormalizableMail): Promise<NormalizedMail> =>
   new Promise((resolve, reject) =>
@@ -83,18 +93,11 @@ const withCallback = <T>(promise: Promise<T>, callback?: Callback<T>): Promise<T
   return undefined;
 };
 
-/**
- * Create a Nodemailer transport that delivers through the Brudcast mailing service
- *
- * @param options - The sending key and, optionally, the service URL and request timeout
- * @returns A transport object to pass to `nodemailer.createTransport`
- * @throws {TypeError} When no sending key is supplied
- */
-export function brudcastTransport(options: BrudcastTransportOptions): BrudcastTransport {
-  const apiKey = resolveApiKey(options ?? {});
+const createApiTransport = (options: BrudcastTransportOptions): BrudcastTransport => {
+  const apiKey = resolveApiKey(options);
   if (!apiKey) {
     throw new TypeError(
-      "nodemailer-brudcast-transport requires auth.apiKey (a Brudcast sending key)"
+      "nodemailer-brudcast-transport requires auth.apiKey (a Brudcast sending key) or auth.user and auth.pass (Brudcast SMTP credentials)"
     );
   }
   const resolved: ResolvedOptions = {
@@ -144,9 +147,38 @@ export function brudcastTransport(options: BrudcastTransportOptions): BrudcastTr
     isIdle: () => true,
     close: () => undefined
   } as BrudcastTransport;
+};
+
+/**
+ * Create a Nodemailer transport that delivers through the Brudcast mailing service
+ *
+ * A sending key delivers over the HTTP API. SMTP credentials return options for Nodemailer's
+ * built-in SMTP transport, preset for Brudcast's submission server.
+ *
+ * @param options - Either the sending key with an optional service URL and request timeout, or
+ * the SMTP username and password with an optional host, port and timeouts
+ * @returns A transport, or SMTP transport options, to pass to `nodemailer.createTransport`
+ * @throws {TypeError} When no credentials are supplied, or both kinds are
+ */
+export function brudcastTransport(options: BrudcastTransportOptions): BrudcastTransport;
+export function brudcastTransport(options: BrudcastSmtpOptions): BrudcastSmtpTransportOptions;
+export function brudcastTransport(
+  options: BrudcastTransportOptions | BrudcastSmtpOptions
+): BrudcastTransport | BrudcastSmtpTransportOptions {
+  const resolved = options ?? {};
+  if (!isSmtpOptions(resolved)) {
+    return createApiTransport(resolved);
+  }
+  if (resolveApiKey(resolved as BrudcastTransportOptions)) {
+    throw new TypeError(
+      "nodemailer-brudcast-transport accepts a sending key or SMTP credentials, not both"
+    );
+  }
+  return brudcastSmtp(resolved);
 }
 
 export { BrudcastError };
 export { buildPayload } from "./payload";
+export { brudcastSmtp, DEFAULT_SMTP_HOST, DEFAULT_SMTP_PORT, SMTP_PORTS } from "./smtp";
 export type * from "./types";
 export default brudcastTransport;

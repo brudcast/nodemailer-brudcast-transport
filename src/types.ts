@@ -1,3 +1,5 @@
+import type { ConnectionOptions } from "node:tls";
+
 export interface BrudcastTransportOptions {
   auth?: {
     apiKey?: string;
@@ -6,6 +8,35 @@ export interface BrudcastTransportOptions {
   apiKey?: string;
   url?: string;
   timeout?: number;
+}
+
+export interface BrudcastSmtpOptions {
+  auth: {
+    user: string;
+    pass: string;
+  };
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  pool?: boolean;
+  timeout?: number;
+  tls?: ConnectionOptions;
+}
+
+export interface BrudcastSmtpTransportOptions {
+  host: string;
+  port: number;
+  secure: boolean;
+  requireTLS: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+  pool?: boolean;
+  connectionTimeout?: number;
+  greetingTimeout?: number;
+  socketTimeout?: number;
+  tls?: ConnectionOptions;
 }
 
 export interface BrudcastAddress {
