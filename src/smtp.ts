@@ -1,6 +1,6 @@
 import type { BrudcastSmtpOptions, BrudcastSmtpTransportOptions } from "./types";
 
-export const DEFAULT_SMTP_HOST = "out-smtp.prod.brudcast.com";
+export const DEFAULT_SMTP_HOST = "out-smtp.brudcast.com";
 export const DEFAULT_SMTP_PORT = 587;
 export const SMTP_PORTS = {
   starttls: [587, 2525, 25],

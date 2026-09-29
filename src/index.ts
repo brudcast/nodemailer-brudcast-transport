@@ -32,14 +32,17 @@ export interface BrudcastTransport {
 
 interface ResolvedOptions {
   apiKey: string;
-  url: string;
+  url: URL;
   timeout: number;
 }
 
 type SendResult = BrudcastResponse<{ jobId: string }>;
 
+/**
+ * The service matches the key exactly, and a secret store can leave a trailing newline
+ */
 const resolveApiKey = (options: BrudcastTransportOptions): string | undefined =>
-  options.auth?.apiKey || options.auth?.api_key || options.apiKey;
+  (options.auth?.apiKey || options.auth?.api_key || options.apiKey)?.trim() || undefined;
 
 const isSmtpOptions = (
   options: BrudcastTransportOptions | BrudcastSmtpOptions
@@ -53,17 +56,55 @@ const normalize = (mail: NormalizableMail): Promise<NormalizedMail> =>
     mail.normalize((error, data) => (error ? reject(error) : resolve(data)))
   );
 
-const parseBody = async (response: Response): Promise<SendResult> => {
-  const text = await response.text();
+const parseJson = (text: string): unknown => {
   try {
-    return text ? (JSON.parse(text) as SendResult) : { status: response.ok };
+    return JSON.parse(text);
   } catch {
-    return { status: false, message: text };
+    return undefined;
   }
 };
 
+/**
+ * A redirect is not followed, since a redirected POST turns into a GET without its body, so it
+ * fails with the target in the message. A 2xx without a JSON body, as a proxy in front of the
+ * service may send, counts as sent: the message may be queued by then, and failing it would
+ * send it again on retry.
+ */
+const parseBody = async (response: Response): Promise<SendResult> => {
+  if (response.status >= 300 && response.status < 400) {
+    return {
+      status: false,
+      message: `The Brudcast url redirected to "${response.headers.get("location") ?? ""}"; set url to the final URL`
+    };
+  }
+  const text = await response.text();
+  const body = text ? parseJson(text) : undefined;
+  if (typeof body === "object" && body !== null) {
+    return body as SendResult;
+  }
+  return response.ok || !text ? { status: response.ok } : { status: false, message: text };
+};
+
+/**
+ * The send path is appended to any path the url already has, so the service can sit behind a
+ * prefix. Every request carries the sending key, so plain http is refused unless the transport
+ * opts in with `insecure`.
+ */
+const resolveSendUrl = (base: string, insecure: boolean): URL => {
+  const url = new URL(base);
+  if (!url.hostname || (url.protocol !== "https:" && !(url.protocol === "http:" && insecure))) {
+    throw new TypeError(
+      `nodemailer-brudcast-transport requires an https url, not "${base}"; set insecure to allow http`
+    );
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}${SEND_PATH}`;
+  url.search = "";
+  url.hash = "";
+  return url;
+};
+
 const post = (options: ResolvedOptions, payload: unknown): Promise<Response> =>
-  fetch(new URL(SEND_PATH, options.url), {
+  fetch(options.url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -72,6 +113,7 @@ const post = (options: ResolvedOptions, payload: unknown): Promise<Response> =>
       "User-Agent": `${packageName}/${packageVersion}`
     },
     body: JSON.stringify(payload),
+    redirect: "manual",
     signal: AbortSignal.timeout(options.timeout)
   });
 
@@ -102,12 +144,16 @@ const createApiTransport = (options: BrudcastTransportOptions): BrudcastTranspor
   }
   const resolved: ResolvedOptions = {
     apiKey,
-    url: options.url ?? DEFAULT_URL,
+    url: resolveSendUrl(options.url ?? DEFAULT_URL, options.insecure === true),
     timeout: options.timeout ?? DEFAULT_TIMEOUT
   };
 
   const deliver = async (mail: NormalizableMail): Promise<BrudcastSentMessageInfo> => {
     const data = await normalize(mail);
+    const authors = mail.message?.getAddresses().from;
+    if (authors && authors.length > 1) {
+      data.from = authors;
+    }
     const response = await post(resolved, await buildPayload(data));
     const body = await parseBody(response);
     if (!response.ok || body.status === false) {

@@ -13,10 +13,10 @@ const auth = { user: "smtp-user", pass: "smtp-pass" };
 
 describe("brudcastSmtp", () => {
   it("targets the production submission server over STARTTLS by default", () => {
-    expect(DEFAULT_SMTP_HOST).toBe("out-smtp.prod.brudcast.com");
+    expect(DEFAULT_SMTP_HOST).toBe("out-smtp.brudcast.com");
     expect(DEFAULT_SMTP_PORT).toBe(587);
     expect(brudcastSmtp({ auth })).toEqual({
-      host: "out-smtp.prod.brudcast.com",
+      host: "out-smtp.brudcast.com",
       port: 587,
       secure: false,
       requireTLS: true,

@@ -1,7 +1,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildPayload, renderHtml, toAttachments, toHeaders } from "../src/payload";
+import {
+  buildPayload,
+  contentIdReferences,
+  renderHtml,
+  toAttachments,
+  toHeaders
+} from "../src/payload";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -26,7 +32,7 @@ describe("buildPayload", () => {
     });
   });
 
-  it("keeps only the first reply-to address and strips its name", async () => {
+  it("sends one reply-to address as an object and several as a list", async () => {
     const payload = await buildPayload({
       from: { address: "a@example.com" },
       to: { address: "b@example.com" },
@@ -39,7 +45,20 @@ describe("buildPayload", () => {
     });
 
     expect(payload.to).toEqual([{ address: "b@example.com" }]);
-    expect(payload.replyTo).toEqual({ address: "support@example.com" });
+    expect(payload.replyTo).toEqual([
+      { name: "Support", address: "support@example.com" },
+      { address: "other@example.com" }
+    ]);
+
+    const single = await buildPayload({
+      from: { address: "a@example.com" },
+      to: { address: "b@example.com" },
+      replyTo: [{ name: "Support", address: "support@example.com" }],
+      subject: "s",
+      text: "t"
+    });
+
+    expect(single.replyTo).toEqual({ name: "Support", address: "support@example.com" });
   });
 });
 
@@ -56,6 +75,48 @@ describe("toHeaders", () => {
       })
     ).toBeUndefined();
   });
+
+  it("writes numbers and booleans as text, skipping 0 and false", () => {
+    expect(
+      toHeaders({
+        headers: { "X-Count": 5, "X-Flag": true, "X-Zero": 0, "X-Off": false },
+        normalizedHeaders: { "X-Count": 5, "X-Flag": true } as unknown as Record<string, string>
+      })
+    ).toEqual({ "X-Count": "5", "X-Flag": "true" });
+  });
+
+  it("rejects an invalid header name even when its value is empty", () => {
+    expect(() => toHeaders({ headers: { "Bad Name": "" } })).toThrow(
+      /header name "Bad Name" is not valid/
+    );
+  });
+
+  it("adds Nodemailer's priority headers, replacing custom ones of the same name", () => {
+    expect(toHeaders({ priority: "HIGH", headers: { "x-priority": "3", "X-Tag": "a" } })).toEqual({
+      "X-Tag": "a",
+      "X-Priority": "1 (Highest)",
+      "X-MSMail-Priority": "High",
+      Importance: "High"
+    });
+    expect(toHeaders({ priority: "low" })).toEqual({
+      "X-Priority": "5 (Lowest)",
+      "X-MSMail-Priority": "Low",
+      Importance: "Low"
+    });
+    expect(toHeaders({ priority: "normal" })).toBeUndefined();
+  });
+});
+
+describe("contentIdReferences", () => {
+  it("finds cid references in image sources and backgrounds, quoted or not", () => {
+    expect(
+      contentIdReferences(
+        `<img alt="a" src="cid:one@acme"><IMG src='cid:two'><td background=cid:three>` +
+          `<a href="cid:not-an-image">`
+      )
+    ).toEqual(new Set(["one@acme", "two", "three"]));
+    expect(contentIdReferences(undefined)).toEqual(new Set());
+  });
 });
 
 describe("toAttachments", () => {
@@ -66,7 +127,10 @@ describe("toAttachments", () => {
 
   it("fills in a filename and content type when missing", () => {
     expect(
-      toAttachments([{ cid: "logo@brudcast", content: Buffer.from("x") }, { content: "y" }])
+      toAttachments(
+        [{ cid: "logo@brudcast", content: Buffer.from("x") }, { content: "y" }],
+        new Set(["logo@brudcast"])
+      )
     ).toEqual([
       {
         filename: "logo@brudcast",
@@ -86,8 +150,24 @@ describe("toAttachments", () => {
 
   it("sends a cid without angle brackets", () => {
     expect(
-      toAttachments([{ filename: "logo.png", cid: "<logo@brudcast>", content: "x" }])?.[0]?.cid
+      toAttachments(
+        [{ filename: "logo.png", cid: "<logo@brudcast>", content: "x" }],
+        new Set(["logo@brudcast"])
+      )?.[0]?.cid
     ).toBe("logo@brudcast");
+  });
+
+  it("sends a referenced cid the service would reject as a regular attachment", () => {
+    const long = "x".repeat(256);
+    const attachments = toAttachments(
+      [
+        { filename: "a.png", cid: "my logo", content: "x" },
+        { filename: "b.png", cid: long, content: "x" }
+      ],
+      new Set(["my logo", long])
+    );
+
+    expect(attachments?.map(item => item.cid)).toEqual([undefined, undefined]);
   });
 
   it("re-encodes strings in other encodings", () => {
@@ -102,6 +182,14 @@ describe("toAttachments", () => {
     const attachment = toAttachments([{ filename: "empty.txt" }])?.[0];
 
     expect(attachment).toMatchObject({ filename: "empty.txt", content: "" });
+  });
+
+  it("rejects raw attachments, which Nodemailer leaves as an object", () => {
+    expect(() =>
+      toAttachments([
+        { filename: "raw.bin", content: { raw: "Content-Type: text/plain\r\n\r\nx" } }
+      ])
+    ).toThrow(/raw.*not support/);
   });
 });
 

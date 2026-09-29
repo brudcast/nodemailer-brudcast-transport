@@ -7,6 +7,7 @@ export interface BrudcastTransportOptions {
   };
   apiKey?: string;
   url?: string;
+  insecure?: boolean;
   timeout?: number;
 }
 
@@ -53,11 +54,11 @@ export interface BrudcastAttachment {
 }
 
 export interface BrudcastSendPayload {
-  from: BrudcastAddress;
+  from: BrudcastAddress | BrudcastAddress[];
   to: BrudcastAddress[];
   cc?: BrudcastAddress[];
   bcc?: BrudcastAddress[];
-  replyTo?: { address: string };
+  replyTo?: BrudcastAddress | BrudcastAddress[];
   subject: string;
   text?: string;
   html?: string;
@@ -123,6 +124,7 @@ export interface NormalizedMail {
   text?: unknown;
   html?: unknown;
   template?: unknown;
+  priority?: unknown;
   attachments?: ResolvedAttachment[];
   headers?: unknown;
   normalizedHeaders?: Record<string, string>;
@@ -130,4 +132,7 @@ export interface NormalizedMail {
 
 export interface NormalizableMail {
   normalize(callback: (error: Error | null, data: NormalizedMail) => void): void;
+  message?: {
+    getAddresses(): { from?: ParsedAddress[] };
+  };
 }

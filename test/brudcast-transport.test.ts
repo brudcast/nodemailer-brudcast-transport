@@ -21,7 +21,7 @@ const accepted = () =>
 
 const fetchMock = vi.fn<typeof fetch>();
 
-const createTransport = (options: { url?: string } = {}) =>
+const createTransport = (options: { url?: string; insecure?: boolean } = {}) =>
   nodemailer.createTransport(brudcastTransport({ auth: { apiKey: "sk_test" }, ...options }));
 
 const lastRequest = () => {
@@ -96,7 +96,7 @@ describe("brudcastTransport", () => {
   });
 
   it("honours a custom url", async () => {
-    await createTransport({ url: "http://localhost:3000" }).sendMail({
+    await createTransport({ url: "http://localhost:3000", insecure: true }).sendMail({
       from: "a@example.com",
       to: "b@example.com",
       subject: "s",
@@ -104,6 +104,49 @@ describe("brudcastTransport", () => {
     });
 
     expect(lastRequest().url).toBe("http://localhost:3000/api/v1/send");
+  });
+
+  it("keeps the path of a custom url", async () => {
+    await createTransport({ url: "https://proxy.example.com/brudcast/" }).sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t"
+    });
+
+    expect(lastRequest().url).toBe("https://proxy.example.com/brudcast/api/v1/send");
+  });
+
+  it("refuses plain http without insecure, even to localhost", () => {
+    expect(() => createTransport({ url: "http://mailing-service.brudcast.com" })).toThrow(
+      /https url/
+    );
+    expect(() => createTransport({ url: "http://localhost:3000" })).toThrow(/https url/);
+    expect(() => createTransport({ url: "http://127.0.0.1:3000" })).toThrow(/https url/);
+    expect(() => createTransport({ url: "ftp://localhost", insecure: true })).toThrow(/https url/);
+  });
+
+  it("trims whitespace around the sending key", async () => {
+    await nodemailer
+      .createTransport(brudcastTransport({ auth: { apiKey: "  sk_test\n" } }))
+      .sendMail({ from: "a@example.com", to: "b@example.com", subject: "s", text: "t" });
+
+    expect(lastRequest().init.headers.Authorization).toBe("Bearer sk_test");
+    expect(() => brudcastTransport({ auth: { apiKey: " \n" } })).toThrow(/auth\.apiKey/);
+  });
+
+  it("allows plain http to any host with insecure", async () => {
+    await createTransport({ url: "http://mailing-service:3000", insecure: true }).sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t"
+    });
+
+    expect(lastRequest().url).toBe("http://mailing-service:3000/api/v1/send");
+    expect(() => createTransport({ url: "ftp://mailing-service", insecure: true })).toThrow(
+      /https url/
+    );
   });
 
   it("maps addresses, content and headers onto the send schema", async () => {
@@ -124,12 +167,130 @@ describe("brudcastTransport", () => {
       to: [{ name: "Mary", address: "mary@example.org" }, { address: "john@example.org" }],
       cc: [{ address: "cc@example.org" }],
       bcc: [{ address: "bcc@example.org" }],
-      replyTo: { address: "support@example.com" },
+      replyTo: { name: "Support", address: "support@example.com" },
       subject: "Hello",
       text: "plain",
       html: "<b>rich</b>",
       headers: { "X-Campaign": "autumn" }
     });
+  });
+
+  it("sends every From and Reply-To address as a list", async () => {
+    await createTransport().sendMail({
+      from: ["Ann <ann@example.com>", { name: "Doe, Bob", address: "bob@example.com" }],
+      to: "b@example.com",
+      replyTo: ["Support <support@example.com>", "billing@example.com"],
+      subject: "s",
+      text: "t"
+    });
+
+    expect(lastRequest().body).toMatchObject({
+      from: [
+        { name: "Ann", address: "ann@example.com" },
+        { name: "Doe, Bob", address: "bob@example.com" }
+      ],
+      replyTo: [
+        { name: "Support", address: "support@example.com" },
+        { address: "billing@example.com" }
+      ]
+    });
+  });
+
+  it("leaves out headers the mailing service owns", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t",
+      headers: {
+        From: "spoof@elsewhere.com",
+        sender: "spoof@elsewhere.com",
+        "Reply-To": "spoof@elsewhere.com",
+        "Message-ID": "<mine@example.com>",
+        "X-Campaign": "autumn"
+      }
+    });
+
+    expect(lastRequest().body.headers).toEqual({ "X-Campaign": "autumn" });
+  });
+
+  it("sends to the envelope recipients that are not copied", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "Customer <customer@example.com>",
+      cc: "cc@example.com",
+      bcc: "bcc@example.com",
+      envelope: {
+        from: "a@example.com",
+        to: ["CUSTOMER@example.com", "cc@example.com", "bcc@example.com", "extra@example.com"]
+      },
+      subject: "s",
+      text: "t"
+    });
+
+    expect(lastRequest().body).toMatchObject({
+      to: [{ name: "Customer", address: "customer@example.com" }, { address: "extra@example.com" }],
+      cc: [{ address: "cc@example.com" }],
+      bcc: [{ address: "bcc@example.com" }]
+    });
+  });
+
+  it("replaces line breaks in header values", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t",
+      headers: { "X-Note": "one\r\nBcc: c@example.com\ntwo" }
+    });
+
+    expect(lastRequest().body.headers).toEqual({ "X-Note": "one Bcc: c@example.com two" });
+  });
+
+  it("sends priority as the headers Nodemailer adds over SMTP", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t",
+      priority: "high"
+    });
+
+    expect(lastRequest().body.headers).toEqual({
+      "X-Priority": "1 (Highest)",
+      "X-MSMail-Priority": "High",
+      Importance: "High"
+    });
+  });
+
+  it("rejects an invalid header name without calling the API", async () => {
+    await expect(
+      createTransport().sendMail({
+        from: "a@example.com",
+        to: "b@example.com",
+        subject: "s",
+        text: "t",
+        headers: { "X Bad:Name": "x" }
+      })
+    ).rejects.toThrow(/header name "X Bad:Name" is not valid/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends an attachment inline only when the HTML references its cid", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      html: '<img src="cid:logo@acme">',
+      attachments: [
+        { filename: "logo.png", cid: "<logo@acme>", content: "x" },
+        { filename: "extra.png", cid: "extra@acme", content: "y" }
+      ]
+    });
+
+    const [logo, extra] = lastRequest().body.attachments;
+    expect(logo).toMatchObject({ filename: "logo.png", cid: "logo@acme" });
+    expect(extra).not.toHaveProperty("cid");
   });
 
   it("joins repeated headers into one value", async () => {
@@ -279,6 +440,38 @@ describe("transport contract", () => {
 
     expect(info).toBe(failure);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails a redirect with its target instead of following it", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 301, headers: { Location: "https://new.example.com/" } })
+    );
+
+    await expect(
+      createTransport().sendMail({
+        from: "a@example.com",
+        to: "b@example.com",
+        subject: "s",
+        text: "t"
+      })
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('redirected to "https://new.example.com/"'),
+      statusCode: 301
+    });
+    expect(lastRequest().init.redirect).toBe("manual");
+  });
+
+  it("counts a 2xx without a JSON body as sent, so a retry does not send twice", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("<html>OK</html>", { status: 200 }));
+
+    const info = await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t"
+    });
+
+    expect(info.messageId).toBe("");
   });
 
   it("falls back to the HTTP status when the error body has no message", async () => {
