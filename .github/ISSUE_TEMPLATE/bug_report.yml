@@ -1,0 +1,26 @@
+name: Bug report
+description: Something is not working as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, what happened instead, and any error output.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest `sendMail` call that shows the problem. Never paste a real sending key.
+      render: ts
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: nodemailer-brudcast-transport 1.0.0, nodemailer 6.9.x, Node 22
+    validations:
+      required: true

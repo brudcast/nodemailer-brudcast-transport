@@ -1,0 +1,85 @@
+{
+  "name": "nodemailer-brudcast-transport",
+  "version": "1.0.0",
+  "description": "Nodemailer transport for the Brudcast mailing service HTTP API",
+  "license": "MIT",
+  "author": "Brudcast Limited",
+  "keywords": [
+    "brudcast",
+    "email",
+    "nodemailer",
+    "transport"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . && markdownlint-cli2",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:dist": "node test/dist/cjs.cjs && node test/dist/esm.mjs",
+    "check:package": "publint --strict && attw --pack . --profile node16",
+    "prepublishOnly": "npm run build && npm run test:dist && npm run check:package",
+    "lint:md": "markdownlint-cli2"
+  },
+  "dependencies": {
+    "@ladjs/consolidate": "^1.0.2"
+  },
+  "peerDependencies": {
+    "nodemailer": ">=6"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^3.2.7",
+    "eslint": "^9.39.5",
+    "handlebars": "^4.7.8",
+    "markdownlint-cli2": "^0.23.3",
+    "nodemailer": "^10.0.12",
+    "prettier": "^3.9.9",
+    "publint": "^0.3.24",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brudcast/nodemailer-brudcast-transport.git"
+  },
+  "homepage": "https://github.com/brudcast/nodemailer-brudcast-transport#readme",
+  "bugs": {
+    "url": "https://github.com/brudcast/nodemailer-brudcast-transport/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
