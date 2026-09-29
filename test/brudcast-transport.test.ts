@@ -132,6 +132,60 @@ describe("brudcastTransport", () => {
     });
   });
 
+  it("joins repeated headers into one value", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t",
+      headers: {
+        "X-Tag": ["welcome", { value: "onboarding" }],
+        "x-tag": "autumn",
+        "X-Campaign": "autumn"
+      }
+    });
+
+    expect(lastRequest().body.headers).toEqual({
+      "X-Tag": "welcome, onboarding, autumn",
+      "X-Campaign": "autumn"
+    });
+  });
+
+  it("reads headers given as a list", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t",
+      headers: [
+        { key: "X-Tag", value: "welcome" },
+        { key: "X-Tag", value: "onboarding" },
+        { key: "X-Campaign", value: "autumn" }
+      ]
+    });
+
+    expect(lastRequest().body.headers).toEqual({
+      "X-Tag": "welcome, onboarding",
+      "X-Campaign": "autumn"
+    });
+  });
+
+  it("keeps the headers nodemailer builds from message fields", async () => {
+    await createTransport().sendMail({
+      from: "a@example.com",
+      to: "b@example.com",
+      subject: "s",
+      text: "t",
+      references: "first@example.com",
+      list: { unsubscribe: "https://example.com/unsubscribe" }
+    });
+
+    expect(lastRequest().body.headers).toEqual({
+      references: "<first@example.com>",
+      "list-unsubscribe": "<https://example.com/unsubscribe>"
+    });
+  });
+
   it("sends every attachment as base64", async () => {
     await createTransport().sendMail({
       from: "a@example.com",

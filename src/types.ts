@@ -49,6 +49,7 @@ export interface BrudcastAttachment {
   content: string;
   encoding: "base64";
   contentType: string;
+  cid?: string;
 }
 
 export interface BrudcastSendPayload {
@@ -123,6 +124,7 @@ export interface NormalizedMail {
   html?: unknown;
   template?: unknown;
   attachments?: ResolvedAttachment[];
+  headers?: unknown;
   normalizedHeaders?: Record<string, string>;
 }
 

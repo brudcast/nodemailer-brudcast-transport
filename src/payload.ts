@@ -42,23 +42,77 @@ const toBase64 = (item: ResolvedAttachment): string => {
   return Buffer.from(content, (item.encoding as BufferEncoding) || "utf8").toString("base64");
 };
 
+/**
+ * An attachment with a cid is sent with it, without the angle brackets Nodemailer also accepts,
+ * so Brudcast delivers it inline for the HTML's `cid:` reference
+ */
 export const toAttachments = (
   attachments: ResolvedAttachment[] = []
 ): BrudcastAttachment[] | undefined => {
-  const result = attachments.filter(Boolean).map((item, index) => ({
-    filename: item.filename || item.cid || `attachment-${index + 1}`,
-    content: toBase64(item),
-    encoding: "base64" as const,
-    contentType: item.contentType || "application/octet-stream"
-  }));
+  const result = attachments.filter(Boolean).map((item, index) => {
+    const cid = item.cid?.replace(/[<>]/g, "");
+    return {
+      filename: item.filename || cid || `attachment-${index + 1}`,
+      content: toBase64(item),
+      encoding: "base64" as const,
+      contentType: item.contentType || "application/octet-stream",
+      ...(cid ? { cid } : {})
+    };
+  });
   return result.length ? result : undefined;
 };
 
-const toHeaders = (headers: Record<string, string> = {}): Record<string, string> | undefined => {
-  const entries = Object.entries(headers).filter(
-    ([, value]) => typeof value === "string" && value.length > 0
-  );
-  return entries.length ? Object.fromEntries(entries) : undefined;
+const headerText = (value: unknown): string | undefined => {
+  const text =
+    typeof value === "object" && value !== null && "value" in value
+      ? (value as { value: unknown }).value
+      : value;
+  return typeof text === "string" && text.length > 0 ? text : undefined;
+};
+
+const customHeaderEntries = (headers: unknown): [unknown, unknown][] =>
+  Array.isArray(headers)
+    ? headers.map(item => [(item as { key?: unknown } | null)?.key, item])
+    : Object.entries((headers ?? {}) as Record<string, unknown>).flatMap(([key, value]) =>
+        ([] as unknown[]).concat(value).map((item): [unknown, unknown] => [key, item])
+      );
+
+const groupCustomHeaders = (headers: unknown): Map<string, { name: string; values: string[] }> => {
+  const groups = new Map<string, { name: string; values: string[] }>();
+  for (const [key, value] of customHeaderEntries(headers)) {
+    const text = headerText(value);
+    if (typeof key !== "string" || key === "" || text === undefined) {
+      continue;
+    }
+    const group = groups.get(key.toLowerCase()) ?? { name: key, values: [] };
+    group.values.push(text);
+    groups.set(key.toLowerCase(), group);
+  }
+  return groups;
+};
+
+/**
+ * Nodemailer's normalized headers keep only the first value of a repeated header and number the
+ * headers given as a list, so custom headers are also read from the message itself, and repeated
+ * ones are joined into one comma-separated value
+ */
+export const toHeaders = (mail: NormalizedMail): Record<string, string> | undefined => {
+  const groups = groupCustomHeaders(mail.headers);
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(mail.normalizedHeaders ?? {})) {
+    const text = headerText(value);
+    const numbered = Array.isArray(mail.headers) && /^\d+$/.test(key);
+    const repeated = (groups.get(key.toLowerCase())?.values.length ?? 0) > 1;
+    if (text !== undefined && !numbered && !repeated) {
+      headers[key] = text;
+    }
+  }
+  for (const { name, values } of groups.values()) {
+    if (values.length > 1 || !Object.hasOwn(headers, name)) {
+      headers[name] = values.join(", ");
+    }
+  }
+  return Object.keys(headers).length ? headers : undefined;
 };
 
 export const renderHtml = async (mail: NormalizedMail): Promise<string | undefined> => {
@@ -88,7 +142,7 @@ export const buildPayload = async (mail: NormalizedMail): Promise<BrudcastSendPa
     text: typeof mail.text === "string" ? mail.text : undefined,
     html: await renderHtml(mail),
     attachments: toAttachments(mail.attachments),
-    headers: toHeaders(mail.normalizedHeaders)
+    headers: toHeaders(mail)
   };
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined)

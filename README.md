@@ -294,8 +294,9 @@ either.
 | `list`                          | No                                |
 | `envelope`, `dkim`, `messageId` | No, Brudcast sets these           |
 
-Brudcast builds the SMTP envelope, signs with the domain's DKIM key and assigns
-the Message-ID itself.
+Repeated headers, such as an array of values, are joined into one
+comma-separated value. Brudcast builds the SMTP envelope, signs with the
+domain's DKIM key and assigns the Message-ID itself.
 
 ## Result
 
@@ -388,8 +389,8 @@ attachments: [
 ];
 ```
 
-Inline images referenced by `cid` are delivered as regular attachments; host
-images and link to them for inline display.
+Attachments with a `cid` are delivered inline, so the HTML can show them with
+`<img src="cid:...">`.
 
 ## Templates
 
