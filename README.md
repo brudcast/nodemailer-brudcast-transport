@@ -309,8 +309,7 @@ described in [SECURITY.md](SECURITY.md).
 
 [MIT](LICENSE) © Brudcast Limited
 
-[banner]:
-  https://raw.githubusercontent.com/brudcast/nodemailer-brudcast-transport/main/.github/assets/banner.svg
+[banner]: .github/assets/banner.svg
 [npm]: https://www.npmjs.com/package/nodemailer-brudcast-transport
 [npm-badge]:
   https://img.shields.io/npm/v/nodemailer-brudcast-transport?color=365AED&label=npm
