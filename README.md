@@ -1,15 +1,21 @@
 # nodemailer-brudcast-transport
 
-![Send through Brudcast from any Nodemailer app][banner]
+![Brudcast: Reach Everyone, Every time][banner]
 
 [![npm version][npm-badge]][npm] [![CI][ci-badge]][ci]
 [![Coverage][coverage-badge]][coverage] [![Types included][types-badge]][npm]
 [![MIT license][license-badge]](LICENSE)
 
-A [Nodemailer][nodemailer] transport for the Brudcast mailing service. It sends
-over the Brudcast HTTP API instead of SMTP, so it works where outbound SMTP
-ports are blocked, and it behaves like every other Nodemailer transport: moving
-an existing app to Brudcast is a one-line change.
+A [Nodemailer][nodemailer] transport for the Brudcast mailing service. It
+authenticates with either kind of Brudcast credential:
+
+- a **sending key**, delivered over the Brudcast HTTP API, which works where
+  outbound SMTP ports are blocked
+- **SMTP credentials**, delivered over SMTP submission to Brudcast's mail server
+  on any of its [supported ports](#smtp-ports)
+
+Either way it behaves like every other Nodemailer transport: moving an existing
+app to Brudcast is a one-line change.
 
 - **Drop-in**: the same `sendMail`, `verify`, callback and promise styles, and
   `info` shape as Nodemailer's built-in transports
@@ -24,11 +30,17 @@ an existing app to Brudcast is a one-line change.
   - [Contents](#contents)
   - [Installation](#installation)
   - [Quick start](#quick-start)
+    - [With a sending key](#with-a-sending-key)
+    - [With SMTP credentials](#with-smtp-credentials)
+  - [Choosing a credential](#choosing-a-credential)
   - [Switching from another provider](#switching-from-another-provider)
     - [From SMTP](#from-smtp)
     - [From an API-key transport](#from-an-api-key-transport)
     - [Selecting the transport from configuration](#selecting-the-transport-from-configuration)
   - [Configuration](#configuration)
+    - [Sending key options](#sending-key-options)
+    - [SMTP options](#smtp-options)
+    - [SMTP ports](#smtp-ports)
   - [Message fields](#message-fields)
   - [Result](#result)
   - [Verifying the connection](#verifying-the-connection)
@@ -42,16 +54,27 @@ an existing app to Brudcast is a one-line change.
 
 ## Installation
 
+Install the transport and Nodemailer with npm:
+
 ```bash
 npm install nodemailer nodemailer-brudcast-transport
 ```
 
+Or with pnpm:
+
 ```bash
 pnpm add nodemailer nodemailer-brudcast-transport
+```
+
+Or with Yarn:
+
+```bash
 yarn add nodemailer nodemailer-brudcast-transport
 ```
 
 ## Quick start
+
+### With a sending key
 
 ```ts
 import nodemailer from "nodemailer";
@@ -87,12 +110,61 @@ The `from` address must belong to a domain the sending key is allowed to use: a
 domain key sends from its own domain, an organization key from any of the
 organization's verified domains.
 
+### With SMTP credentials
+
+Pass the SMTP username and password instead of a key. The transport connects to
+Brudcast's submission server on port 587 with STARTTLS; see
+[SMTP ports](#smtp-ports) for the alternatives.
+
+```ts
+const transporter = nodemailer.createTransport(
+  brudcast({
+    auth: {
+      user: process.env.BRUDCAST_SMTP_USER,
+      pass: process.env.BRUDCAST_SMTP_PASS
+    }
+  })
+);
+```
+
+SMTP credentials belong to a single sending domain, so the `from` address must
+be on that domain.
+
+## Choosing a credential
+
+| Feature        | Sending key                        | SMTP credentials       |
+| -------------- | ---------------------------------- | ---------------------- |
+| Protocol       | HTTPS                              | SMTP, see [ports][p]   |
+| Blocked ports  | Works                              | Needs one port open    |
+| Scope          | One domain, or every org domain    | One domain             |
+| `info` result  | Includes the Brudcast `jobId`      | Standard SMTP result   |
+| Errors         | [`BrudcastError`](#error-handling) | SMTP `responseCode`    |
+| Message fields | [Mapped subset](#message-fields)   | Everything, as MIME    |
+| Pooling        | Not needed                         | Optional, `pool: true` |
+
+[p]: #smtp-ports
+
+Pick one per transport. Passing both a sending key and SMTP credentials throws a
+`TypeError`.
+
 ## Switching from another provider
 
 Only the `createTransport` call changes. Every `sendMail` call, callback, and
 `info.messageId` lookup keeps working.
 
 ### From SMTP
+
+Keep SMTP and swap in Brudcast SMTP credentials; the host, port and TLS settings
+come from the transport:
+
+```diff
+ const transporter = nodemailer.createTransport(
+-  { host: "smtp.example.com", port: 587, auth: { user, pass } }
++  brudcast({ auth: { user, pass } })
+ );
+```
+
+Or move to a sending key and the HTTP API:
 
 ```diff
  const transporter = nodemailer.createTransport(
@@ -130,6 +202,11 @@ const transporter = nodemailer.createTransport(
 
 ## Configuration
 
+The credential you pass decides the delivery path: `auth.apiKey` (or an alias)
+selects the HTTP API, `auth.user` and `auth.pass` select SMTP.
+
+### Sending key options
+
 | Option         | Type     | Default   | Description                        |
 | -------------- | -------- | --------- | ---------------------------------- |
 | `auth.apiKey`  | `string` | -         | Brudcast sending key, **required** |
@@ -141,10 +218,62 @@ const transporter = nodemailer.createTransport(
 `url` defaults to `https://mailing-service.brudcast.com`. Point it at another
 environment when needed, for example `http://localhost:3000` locally.
 
-Keep sending keys out of source control; load them from the environment or a
-secret manager.
+### SMTP options
+
+| Option      | Type      | Default                      | Description        |
+| ----------- | --------- | ---------------------------- | ------------------ |
+| `auth.user` | `string`  | -                            | SMTP username      |
+| `auth.pass` | `string`  | -                            | SMTP password      |
+| `host`      | `string`  | `out-smtp.prod.brudcast.com` | Submission server  |
+| `port`      | `number`  | `587`                        | See [ports][p]     |
+| `secure`    | `boolean` | `true` on 465, else `false`  | TLS on connect     |
+| `pool`      | `boolean` | `false`                      | Reuse connections  |
+| `timeout`   | `number`  | Nodemailer's defaults        | Timeouts, in ms    |
+| `tls`       | `object`  | -                            | [TLS options][tls] |
+
+`auth.user` and `auth.pass` are required. When `secure` is `false`, STARTTLS is
+required. `timeout` sets the connection, greeting and socket timeouts together.
+
+With SMTP credentials, `brudcast()` returns options for Nodemailer's built-in
+SMTP transport, so everything else about it (pooling, `close()`, DSN) works as
+[Nodemailer documents][smtp]. Build the same options explicitly with
+`brudcastSmtp()`:
+
+```ts
+import { brudcastSmtp } from "nodemailer-brudcast-transport";
+
+const transporter = nodemailer.createTransport(
+  brudcastSmtp({ auth: { user, pass }, port: 465, pool: true })
+);
+```
+
+### SMTP ports
+
+Every port requires TLS. The transport never falls back to plaintext: if the
+server does not offer STARTTLS, the send fails.
+
+| Port   | TLS      | Use it when                                          |
+| ------ | -------- | ---------------------------------------------------- |
+| `587`  | STARTTLS | Default; the standard submission port                |
+| `2525` | STARTTLS | Your host or network blocks 587, common on cloud VMs |
+| `25`   | STARTTLS | Only 25 is open; many ISPs and clouds block it       |
+| `465`  | Implicit | You want TLS from the first byte                     |
+
+```ts
+brudcast({ auth: { user, pass }, port: 2525 });
+brudcast({ auth: { user, pass }, port: 465 }); // secure: true is implied
+```
+
+The list is also exported as `SMTP_PORTS`.
+
+Keep sending keys and SMTP passwords out of source control; load them from the
+environment or a secret manager.
 
 ## Message fields
+
+This section, [Result](#result) and [Error handling](#error-handling) describe
+the sending-key path. Over SMTP, Nodemailer composes and sends the complete MIME
+message, so every [message field][message] is supported.
 
 The transport accepts the standard [Nodemailer message fields][message].
 Addresses may be strings (`"Name <a@b.com>"`), address objects, or arrays of
@@ -191,6 +320,9 @@ Because delivery is queued, `accepted` means accepted for delivery by Brudcast,
 not by the recipient's mail server. Bounces and suppressions are reported
 through Brudcast delivery events.
 
+Over SMTP, `info` is Nodemailer's standard SMTP result, with no `jobId`. The
+same caveat applies: `250` means queued by Brudcast, not delivered.
+
 ## Verifying the connection
 
 ```ts
@@ -198,7 +330,8 @@ await transporter.verify(); // true, or rejects if the key is not accepted
 ```
 
 `verify` checks that the service is reachable and that it accepts the sending
-key, without sending an email. It supports the callback style too.
+key, without sending an email. With SMTP credentials it connects, upgrades to
+TLS and authenticates. It supports the callback style too.
 
 ## Error handling
 
@@ -232,6 +365,15 @@ try {
 Network failures and timeouts reject with the underlying `fetch` error
 (`TimeoutError` when `timeout` elapses).
 
+Over SMTP, failures reject with Nodemailer's SMTP errors, which carry `code` and
+the server's `responseCode`:
+
+| Code  | Meaning                                                          |
+| ----- | ---------------------------------------------------------------- |
+| `535` | The username or password is wrong, or the user is inactive       |
+| `550` | `from` is off the user's domain, unregistered, or sending is off |
+| `451` | Rate limited; retry with backoff                                 |
+
 ## Attachments
 
 Every Nodemailer attachment source works: `content` as a string or `Buffer`,
@@ -250,6 +392,9 @@ Inline images referenced by `cid` are delivered as regular attachments; host
 images and link to them for inline display.
 
 ## Templates
+
+Templates are rendered on the sending-key path only; with SMTP credentials, use
+a Nodemailer [plugin][plugins] or render `html` yourself.
 
 Set `template` to render HTML locally with any engine supported by
 [Consolidate.js][consolidate]. Install the engine itself alongside.
@@ -278,6 +423,9 @@ inferred as `BrudcastSentMessageInfo`:
 const info = await transporter.sendMail(message);
 info.jobId; // string
 ```
+
+With SMTP credentials, `brudcast()` returns `BrudcastSmtpTransportOptions`,
+which `createTransport` types as an SMTP transport.
 
 On Nodemailer 6 to 9 with `@types/nodemailer`, every custom transport's result
 is typed as the SMTP result. The standard fields (`messageId`, `envelope`,
@@ -327,3 +475,6 @@ described in [SECURITY.md](SECURITY.md).
 [nodemailer]: https://nodemailer.com
 [message]: https://nodemailer.com/message/
 [consolidate]: https://github.com/ladjs/consolidate
+[smtp]: https://nodemailer.com/smtp/
+[plugins]: https://nodemailer.com/plugins/
+[tls]: https://nodejs.org/api/tls.html#tlsconnectoptions-callback
