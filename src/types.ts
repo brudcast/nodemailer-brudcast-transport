@@ -6,9 +6,9 @@ export interface BrudcastTransportOptions {
     api_key?: string;
   };
   apiKey?: string;
-  url?: string;
-  insecure?: boolean;
-  timeout?: number;
+  url?: string | null;
+  insecure?: boolean | number | string;
+  timeout?: number | string | null;
 }
 
 export interface BrudcastSmtpOptions {
@@ -95,6 +95,14 @@ export interface TemplateOptions {
   context?: Record<string, unknown>;
 }
 
+/**
+ * The message fields the transport reads on top of Nodemailer's own, for use as
+ * `SendMailOptions & BrudcastSendMailOptions`
+ */
+export interface BrudcastSendMailOptions {
+  template?: TemplateOptions;
+}
+
 export interface Envelope {
   from: string | false;
   to: string[];
@@ -103,6 +111,7 @@ export interface Envelope {
 export interface ParsedAddress {
   name?: string;
   address?: string;
+  group?: ParsedAddress[];
 }
 
 export interface ResolvedAttachment {
@@ -125,6 +134,10 @@ export interface NormalizedMail {
   html?: unknown;
   template?: unknown;
   priority?: unknown;
+  xMailer?: unknown;
+  inReplyTo?: unknown;
+  references?: unknown;
+  list?: unknown;
   attachments?: ResolvedAttachment[];
   headers?: unknown;
   normalizedHeaders?: Record<string, string>;

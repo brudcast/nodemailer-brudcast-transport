@@ -1,6 +1,6 @@
 import type { BrudcastSmtpOptions, BrudcastSmtpTransportOptions } from "./types";
 
-export const DEFAULT_SMTP_HOST = "out-smtp.brudcast.com";
+export const DEFAULT_SMTP_HOST = "smtp.brudcast.com";
 export const DEFAULT_SMTP_PORT = 587;
 export const SMTP_PORTS = {
   starttls: [587, 2525, 25],
@@ -16,7 +16,8 @@ const isImplicitTls = (port: number): boolean =>
  * TLS is always required: port 465 negotiates it on connect, every other port must upgrade with
  * STARTTLS, so a server that stops advertising it fails the send instead of going plaintext.
  *
- * @param options - The SMTP username and password and, optionally, the host, port and timeouts
+ * @param options - The SMTP username and password and, optionally, the host, port, timeout, pool
+ * and TLS options
  * @returns An options object to pass to `nodemailer.createTransport`
  * @throws {TypeError} When the username or password is missing
  */
