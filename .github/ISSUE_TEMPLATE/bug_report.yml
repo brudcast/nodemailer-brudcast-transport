@@ -13,7 +13,7 @@ body:
     id: reproduction
     attributes:
       label: Minimal reproduction
-      description: The smallest `sendMail` call that shows the problem. Never paste a real sending key.
+      description: The smallest `sendMail` call that shows the problem. Never paste a real sending key or SMTP password.
       render: ts
     validations:
       required: true
@@ -21,6 +21,6 @@ body:
     id: versions
     attributes:
       label: Versions
-      placeholder: nodemailer-brudcast-transport 1.0.0, nodemailer 6.9.x, Node 22
+      placeholder: nodemailer-brudcast-transport 1.0.0, nodemailer 10.0.x, Node 22
     validations:
       required: true

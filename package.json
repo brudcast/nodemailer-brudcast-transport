@@ -1,13 +1,15 @@
 {
   "name": "nodemailer-brudcast-transport",
   "version": "1.0.0",
-  "description": "Nodemailer transport for the Brudcast mailing service HTTP API",
+  "description": "Nodemailer transport for the Brudcast mailing service, over its HTTP API or SMTP",
   "license": "MIT",
   "author": "Brudcast Limited",
   "keywords": [
     "brudcast",
     "email",
+    "mail",
     "nodemailer",
+    "smtp",
     "transport"
   ],
   "type": "module",
