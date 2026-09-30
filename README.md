@@ -252,7 +252,9 @@ const transporter = nodemailer.createTransport(
 ```
 
 With them set, an attachment with a `path` or an `href` fails the send before
-any request is made, and a message cannot switch them back off.
+any request is made, and a message cannot switch them back off. This needs
+Nodemailer 9 or later: Nodemailer 6 to 8 do not apply these defaults to a custom
+transport, so there they have no effect.
 
 ### SMTP options
 

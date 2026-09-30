@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import nodemailer, { type SendMailOptions } from "nodemailer";
@@ -1269,6 +1270,17 @@ describe("Retry-After", () => {
   });
 });
 
+/**
+ * The major version of the Nodemailer installed, which CI varies from 6 to the latest
+ */
+const nodemailerMajor = Number(
+  (
+    JSON.parse(
+      readFileSync(path.join(fixtures, "../../node_modules/nodemailer/package.json"), "utf8")
+    ) as { version: string }
+  ).version.split(".")[0]
+);
+
 describe("Nodemailer's file and URL access flags", () => {
   const withAttachment = (attachment: Record<string, unknown>) => ({
     from: "a@example.com",
@@ -1286,33 +1298,40 @@ describe("Nodemailer's file and URL access flags", () => {
     expect(lastRequest().body.attachments[0].filename).toBe("hello.txt");
   });
 
-  it("applies disableFileAccess given as a createTransport default", async () => {
-    const transport = nodemailer.createTransport(brudcastTransport({ apiKey: "sk_test" }), {
-      disableFileAccess: true
-    });
+  // Nodemailer 6 to 8 do not apply the createTransport defaults to a custom transport's message
+  it.skipIf(nodemailerMajor < 9)(
+    "applies disableFileAccess given as a createTransport default",
+    async () => {
+      const transport = nodemailer.createTransport(brudcastTransport({ apiKey: "sk_test" }), {
+        disableFileAccess: true
+      });
 
-    await expect(
-      transport.sendMail(withAttachment({ path: path.join(fixtures, "hello.txt") }))
-    ).rejects.toMatchObject({ code: "EFILEACCESS" });
-    await expect(
-      transport.sendMail({
-        ...withAttachment({ path: path.join(fixtures, "hello.txt") }),
-        disableFileAccess: false
-      })
-    ).rejects.toMatchObject({ code: "EFILEACCESS" });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(
+        transport.sendMail(withAttachment({ path: path.join(fixtures, "hello.txt") }))
+      ).rejects.toMatchObject({ code: "EFILEACCESS" });
+      await expect(
+        transport.sendMail({
+          ...withAttachment({ path: path.join(fixtures, "hello.txt") }),
+          disableFileAccess: false
+        })
+      ).rejects.toMatchObject({ code: "EFILEACCESS" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 
-  it("applies disableUrlAccess given as a createTransport default", async () => {
-    const transport = nodemailer.createTransport(brudcastTransport({ apiKey: "sk_test" }), {
-      disableUrlAccess: true
-    });
+  it.skipIf(nodemailerMajor < 9)(
+    "applies disableUrlAccess given as a createTransport default",
+    async () => {
+      const transport = nodemailer.createTransport(brudcastTransport({ apiKey: "sk_test" }), {
+        disableUrlAccess: true
+      });
 
-    await expect(
-      transport.sendMail(withAttachment({ href: "https://example.com/file.txt" }))
-    ).rejects.toMatchObject({ code: "EURLACCESS" });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(
+        transport.sendMail(withAttachment({ href: "https://example.com/file.txt" }))
+      ).rejects.toMatchObject({ code: "EURLACCESS" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("option-derived and message ID headers", () => {
